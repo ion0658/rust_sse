@@ -30,7 +30,7 @@ struct Message {
 
 struct AppState {
     pub sender: tokio::sync::broadcast::Sender<Message>,
-    pub reciever: tokio::sync::broadcast::Receiver<Message>,
+    //pub reciever: tokio::sync::broadcast::Receiver<Message>,
 }
 
 #[tokio::main]
@@ -38,7 +38,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "example_sse=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "example_sse=debug,tower_http=debug,rust_sse=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -47,15 +47,20 @@ async fn main() {
 
     let static_files_service = ServeDir::new(assets_dir).append_index_html_on_directories(true);
 
-    let (tx, rx) = tokio::sync::broadcast::channel::<Message>(1024);
+    let (tx, _rx) = tokio::sync::broadcast::channel::<Message>(1024);
     let app_state = Arc::new(AppState {
         sender: tx,
-        reciever: rx,
+        //reciever: rx,
     });
 
     // build our application with a route
     let app = Router::new()
-        .fallback_service(static_files_service)
+        .fallback_service(
+            static_files_service
+                .precompressed_br()
+                .precompressed_deflate()
+                .precompressed_gzip(),
+        )
         .route("/post", post(post_handler))
         .route("/sse", get(sse_handler))
         .with_state(app_state)
@@ -74,9 +79,9 @@ async fn sse_handler(
     State(app_state): State<Arc<AppState>>,
     TypedHeader(user_agent): TypedHeader<headers::UserAgent>,
 ) -> Sse<impl Stream<Item = Result<Event>>> {
-    println!("`{}` connected", user_agent.as_str());
+    tracing::info!("`{}` connected", user_agent.as_str());
     let stream = async_stream::stream! {
-        let mut rx = app_state.reciever.resubscribe();
+        let mut rx = app_state.sender.subscribe();
         while let Ok(msg) = rx.recv().await {
             tracing::debug!("Sending: {:?}", msg);
             let event = Event::default()
@@ -101,6 +106,6 @@ async fn post_handler(
         .sender
         .send(msg.clone())
         .or_else(|_| Err(StatusCode::INTERNAL_SERVER_ERROR))?;
-    println!("Received: {:?}", msg);
+    tracing::info!("Received: {:?}", msg);
     Ok(Json(msg))
 }

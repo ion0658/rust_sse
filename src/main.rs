@@ -23,7 +23,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct Message {
-    id: i64,
+    id: uuid::Uuid,
     msg: String,
     timestamp: chrono::DateTime<chrono::Utc>,
 }
@@ -57,6 +57,7 @@ async fn main() {
                 .precompressed_deflate()
                 .precompressed_gzip(),
         )
+        .route("/id", get(get_id_handler))
         .route("/post", post(post_handler))
         .route("/sse", get(sse_handler))
         .with_state(app_state)
@@ -104,4 +105,9 @@ async fn post_handler(
         .or_else(|_| Err(StatusCode::INTERNAL_SERVER_ERROR))?;
     tracing::info!("Received: {:?}", msg);
     Ok(Json(msg))
+}
+
+async fn get_id_handler() -> impl IntoResponse {
+    let uuid = uuid::Uuid::new_v4();
+    Json(uuid)
 }

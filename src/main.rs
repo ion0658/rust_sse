@@ -30,7 +30,6 @@ struct Message {
 
 struct AppState {
     pub sender: tokio::sync::broadcast::Sender<Message>,
-    //pub reciever: tokio::sync::broadcast::Receiver<Message>,
 }
 
 #[tokio::main]
@@ -48,10 +47,7 @@ async fn main() {
     let static_files_service = ServeDir::new(assets_dir).append_index_html_on_directories(true);
 
     let (tx, _rx) = tokio::sync::broadcast::channel::<Message>(1024);
-    let app_state = Arc::new(AppState {
-        sender: tx,
-        //reciever: rx,
-    });
+    let app_state = Arc::new(AppState { sender: tx });
 
     // build our application with a route
     let app = Router::new()
